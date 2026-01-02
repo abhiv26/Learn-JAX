@@ -7,6 +7,8 @@ Original file is located at
     https://colab.research.google.com/drive/10VBYzMiXMEXu0FlBf5MEU5S5NBDLuajd
 """
 
+!pip  install equinox
+
 import jax
 import jax.numpy as jnp
 import jax.random as jr
@@ -91,6 +93,7 @@ class Embedding(eqx.Module):
   def __call__(self, x):
     return jax.vmap(self.embedding)(x) * (self.d_model ** 0.5) # map over token dim
 
+# Not learnable no need to register as a pytree
 def PositionalEncoding(d_model, seq_len, x):
 
   pe = jnp.zeros((seq_len, d_model)) # Create matrix sequence length x dimensionality
@@ -105,6 +108,31 @@ def PositionalEncoding(d_model, seq_len, x):
 
   return x + pe[:x.shape[1], :] # handle varying sequence lengths
 
+class LayerNorm(eqx.Module):
+
+  gamma: jnp.ndarray
+  beta: jnp.ndarray
+  eps: float
+
+  def __init__(self, gamma, beta, eps=1e-05):
+    self.gamma = gamma
+    self.beta = beta
+    self.eps = eps
+
+  def __call__(self, x):
+    mean = jnp.mean(x, axis=-1, keepdims=True) # normalize over last dim
+    var= jnp.var(x, axis=-1, keepdims=True)
+    x = (x - mean) / jnp.sqrt(var + self.eps)
+    return x * self.gamma + self.beta
+
+class FeedForward(eqx.Module):
+
+  linear1: eqx.nn.Linear
+  linear2: eqx.nn.Linear
+
+  def __init__(self, dropout_rate, d_model, d_ff):
+    key1, key2 = jr.split(jr.key(42))
+
 vocab_size = 1000
 d_model = 512
 batch_size = 4
@@ -114,4 +142,6 @@ tokens = jnp.array([[1, 2, 3], [4, 5, 6]]) # B, T
 embedding = Embedding(d_model, vocab_size)
 x = jax.vmap(embedding)(tokens)
 x = PositionalEncoding(d_model, seq_len, x)
+layernorm = LayerNorm(0.01, 0.01)
+x = layernorm(x)
 x
